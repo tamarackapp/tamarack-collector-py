@@ -50,9 +50,11 @@ Performance Impact
 ==================
 
 It is unavoidable for this library to have a non-zero impact on the
-performance of your application. It is currently implemented very
-naively, but will soon have a better implementation aiming at causing
-the least amount of per-request overhead possible.
+performance of your application. However, it is implemented with the
+intent to cause the least amount of per-request overhead as
+possible. After each request, the time interval is sampled and the
+data handed off to a worker, which collects data every minute. The
+library is using the ``multiprocessing`` module of Python.
 
 .. _Tamarack: https://github.com/mhallin/tamarack
 .. _Django: https://www.djangoproject.com/

@@ -1,41 +1,31 @@
-import json
 import os
-import requests
 
 from datetime import datetime
 
 from django.conf import settings
 from django.core.urlresolvers import resolve
 
+from .worker import start_worker
+
+_url = os.path.join(settings.TAMARACK_URL, 'receiver-api/v1/request-data')
+shared_queue = start_worker(_url, settings.TAMARACK_APP_ID)
+
+
 def request_duration(request):
-    return int((request._tamarack_end - request._tamarack_start).total_seconds() * 1000)
+    interval = request._tamarack_end - request._tamarack_start
+    return int(interval.total_seconds() * 1000)
 
 
 def dispatch_request_timings(request, exception):
     data = {
-        'app_name': settings.TAMARACK_APP_ID,
-        'data': [
-            {
-                'timestamp': request._tamarack_start.isoformat() + 'Z',
-                'errors': 1 if exception else 0,
-                'requests': 1,
-                'total_time': request_duration(request)
-            }
-        ],
-        'endpoints': [
-            {
-                'timestamp': request._tamarack_start.isoformat() + 'Z',
-                'errors': 1 if exception else 0,
-                'requests': 1,
-                'total_time': request_duration(request),
-                'endpoint': request._tamarack_endpoint_name,
-            }
-        ],
+        'timestamp': request._tamarack_start,
+        'errors': 1 if exception else 0,
+        'requests': 1,
+        'total_time': request_duration(request),
+        'endpoint': request._tamarack_endpoint_name,
     }
 
-    url = os.path.join(settings.TAMARACK_URL, 'receiver-api/v1/request-data')
-
-    resp = requests.post(url, data=json.dumps(data))
+    shared_queue.put_nowait(data)
 
 
 class TamarackMiddleware:
@@ -56,5 +46,5 @@ class TamarackMiddleware:
 
     def process_exception(self, request, exception):
         request._tamarack_end = datetime.utcnow()
-        
+
         dispatch_request_timings(request, exception)
