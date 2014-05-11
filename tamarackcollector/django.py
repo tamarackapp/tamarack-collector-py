@@ -10,10 +10,12 @@ from .worker import start_worker
 _url = os.path.join(settings.TAMARACK_URL, 'receiver-api/v1/request-data')
 shared_queue = start_worker(_url, settings.TAMARACK_APP_ID)
 
+SEC_TO_USEC = 1000 * 1000
+
 
 def request_duration(request):
     interval = request._tamarack_end - request._tamarack_start
-    return int(interval.total_seconds() * 1000)
+    return int(interval.total_seconds() * SEC_TO_USEC)
 
 
 def dispatch_request_timings(request, exception):
