@@ -2,8 +2,11 @@ import json
 import requests
 import time
 
+from collections import Counter
 from multiprocessing import Process, Queue
 from queue import Empty
+
+shared_queue = None
 
 
 def datetime_by_minute(dt):
@@ -13,8 +16,7 @@ def datetime_by_minute(dt):
 def process_jobs(url, app_id, queue):
     while True:
         time.sleep(60)
-        buckets = {}
-        endpoint_buckets = {}
+        by_minute = {}
 
         while True:
             try:
@@ -25,40 +27,24 @@ def process_jobs(url, app_id, queue):
             minute = datetime_by_minute(i['timestamp'])
             endpoint = i['endpoint']
 
-            if minute not in buckets:
-                buckets[minute] = {
-                    'requests': 0,
-                    'errors': 0,
-                    'total_time': 0,
-                    'timestamp': minute
-                }
-
-            if (minute, endpoint) not in endpoint_buckets:
-                endpoint_buckets[(minute, endpoint)] = {
-                    'requests': 0,
-                    'errors': 0,
-                    'total_time': 0,
+            if (minute, endpoint) not in by_minute:
+                by_minute[(minute, endpoint)] = {
+                    'sensor_data': Counter(),
                     'timestamp': minute,
-                    'endpoint': endpoint
+                    'endpoint': endpoint,
                 }
 
-            bucket = buckets[minute]
-            bucket['requests'] += i['requests']
-            bucket['errors'] += i['errors']
-            bucket['total_time'] += i['total_time']
+            sensor_data = by_minute[(minute, endpoint)]['sensor_data']
+            sensor_data['request_count'] += i['request_count']
+            sensor_data['error_count'] += i['error_count']
+            sensor_data['total_time'] += i['total_time']
 
-            endpoint_bucket = endpoint_buckets[(minute, endpoint)]
-            endpoint_bucket['requests'] += i['requests']
-            endpoint_bucket['errors'] += i['errors']
-            endpoint_bucket['total_time'] += i['total_time']
-
-        if not buckets:
+        if not by_minute:
             continue
 
         data = {
             'app_name': app_id,
-            'data': list(buckets.values()),
-            'endpoints': list(endpoint_buckets.values()),
+            'by_minute': list(by_minute.values()),
         }
 
         requests.post(url, data=json.dumps(data))
@@ -69,4 +55,6 @@ def start_worker(url, app_id):
     p = Process(target=process_jobs, args=(url, app_id, q, ))
     p.start()
 
-    return q
+    global shared_queue
+
+    shared_queue = q
