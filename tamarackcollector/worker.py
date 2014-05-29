@@ -32,12 +32,14 @@ def process_jobs(url, app_id, queue):
                     'sensor_data': Counter(),
                     'timestamp': minute,
                     'endpoint': endpoint,
+                    'request_count': 0,
+                    'error_count': 0,
                 }
 
-            sensor_data = by_minute[(minute, endpoint)]['sensor_data']
-            sensor_data['request_count'] += i['request_count']
-            sensor_data['error_count'] += i['error_count']
-            sensor_data['total_time'] += i['total_time']
+            minute_data = by_minute[(minute, endpoint)]
+            minute_data['request_count'] += i['request_count']
+            minute_data['error_count'] += i['error_count']
+            minute_data['sensor_data']['total_time'] += i['total_time']
 
         if not by_minute:
             continue
