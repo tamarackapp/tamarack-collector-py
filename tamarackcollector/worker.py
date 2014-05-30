@@ -14,6 +14,11 @@ def datetime_by_minute(dt):
     return dt.replace(second=0, microsecond=0).isoformat() + 'Z'
 
 
+def increment_counter(counter, data):
+    for k, v in data.items():
+        counter[k] += v
+
+
 def process_jobs(url, app_id, queue):
     by_minute = {}
     last_sync = datetime.utcnow()
@@ -40,7 +45,8 @@ def process_jobs(url, app_id, queue):
             minute_data = by_minute[(minute, endpoint)]
             minute_data['request_count'] += i['request_count']
             minute_data['error_count'] += i['error_count']
-            minute_data['sensor_data']['total_time'] += i['total_time']
+
+            increment_counter(minute_data['sensor_data'], i['sensor_data'])
 
         if (datetime.utcnow() - last_sync) > timedelta(seconds=60):
             data = {

@@ -33,13 +33,19 @@ class RequestData(threading.local):
         interval = datetime.utcnow() - self.request_start
         interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
 
+        query_time = sum(q['total_time'] for q in self.queries)
+        other_time = interval_usec - query_time
+
         data = {
             'timestamp': self.request_start,
             'error_count': 1 if exception else 0,
             'request_count': 1,
-            'total_time': interval_usec,
             'endpoint': self.view_name,
             'queries': self.queries,
+            'sensor_data': {
+                'other': other_time,
+                'sql': query_time,
+            }
         }
 
         worker.shared_queue.put_nowait(data)
