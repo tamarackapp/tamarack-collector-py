@@ -1,5 +1,6 @@
 import threading
 
+from collections import Counter
 from datetime import datetime
 
 from . import worker
@@ -19,6 +20,7 @@ class RequestData(threading.local):
         self.view_name = None
         self.in_request = False
         self.request_start = None
+        self.time_counters = None
 
     def mark_request_start(self, view_name):
         assert not self.in_request
@@ -26,6 +28,7 @@ class RequestData(threading.local):
         self.in_request = True
         self.view_name = view_name
         self.request_start = datetime.utcnow()
+        self.time_counters = Counter()
 
     def mark_request_end(self, exception):
         assert self.in_request
@@ -33,8 +36,13 @@ class RequestData(threading.local):
         interval = datetime.utcnow() - self.request_start
         interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
 
-        query_time = sum(q['total_time'] for q in self.queries)
-        other_time = interval_usec - query_time
+        sensor_data = dict(self.time_counters)
+        other_time = interval_usec
+
+        for val in sensor_data.values():
+            other_time -= val
+
+        sensor_data['other'] = other_time
 
         data = {
             'timestamp': self.request_start,
@@ -42,10 +50,7 @@ class RequestData(threading.local):
             'request_count': 1,
             'endpoint': self.view_name,
             'queries': self.queries,
-            'sensor_data': {
-                'other': other_time,
-                'sql': query_time,
-            }
+            'sensor_data': sensor_data,
         }
 
         worker.shared_queue.put_nowait(data)
@@ -55,6 +60,11 @@ class RequestData(threading.local):
             'query': sql,
             'total_time': int(interval.total_seconds() * SEC_TO_USEC),
         })
+        self.increment_time_counter('sql', interval.total_seconds())
+
+    def increment_time_counter(self, counter, value):
+        if self.time_counters is not None:
+            self.time_counters[counter] += int(value * SEC_TO_USEC)
 
 
 current_request = RequestData()
