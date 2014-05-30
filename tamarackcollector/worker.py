@@ -3,6 +3,7 @@ import requests
 import time
 
 from collections import Counter
+from datetime import datetime, timedelta
 from multiprocessing import Process, Queue
 from queue import Empty
 
@@ -14,16 +15,16 @@ def datetime_by_minute(dt):
 
 
 def process_jobs(url, app_id, queue):
+    by_minute = {}
+    last_sync = datetime.utcnow()
+
     while True:
-        time.sleep(60)
-        by_minute = {}
+        try:
+            i = queue.get(block=True, timeout=30)
+        except Empty:
+            i = None
 
-        while True:
-            try:
-                i = queue.get_nowait()
-            except Empty:
-                break
-
+        if i:
             minute = datetime_by_minute(i['timestamp'])
             endpoint = i['endpoint']
 
@@ -41,15 +42,19 @@ def process_jobs(url, app_id, queue):
             minute_data['error_count'] += i['error_count']
             minute_data['sensor_data']['total_time'] += i['total_time']
 
-        if not by_minute:
-            continue
+        if (datetime.utcnow() - last_sync) > timedelta(seconds=60):
+            data = {
+                'app_name': app_id,
+                'by_minute': list(by_minute.values()),
+            }
 
-        data = {
-            'app_name': app_id,
-            'by_minute': list(by_minute.values()),
-        }
+            resp = requests.post(url, data=json.dumps(data))
 
-        requests.post(url, data=json.dumps(data))
+            if resp.status_code == 200:
+                by_minute = {}
+                last_sync = datetime.utcnow()
+            else:
+                print('Could not sync tamarack data: %s' % resp)
 
 
 def start_worker(url, app_id):
