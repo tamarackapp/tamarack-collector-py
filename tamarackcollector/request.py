@@ -64,7 +64,10 @@ class KeyedTimeCounter:
 
 class RequestData(threading.local):
     def __init__(self):
-        self.queries = []
+        self.reset()
+
+    def reset(self):
+        self.queries = None
         self.view_name = None
         self.in_request = False
         self.request_start = None
@@ -73,6 +76,7 @@ class RequestData(threading.local):
     def mark_request_start(self, view_name):
         assert not self.in_request
 
+        self.queries = None
         self.in_request = True
         self.view_name = view_name
         self.request_start = datetime.utcnow()
@@ -104,11 +108,14 @@ class RequestData(threading.local):
 
         worker.shared_queue.put_nowait(data)
 
+        self.reset()
+
     def log_sql(self, sql, interval):
-        self.queries.append({
-            'query': sql,
-            'total_time': int(interval.total_seconds() * SEC_TO_USEC),
-        })
+        if self.queries:
+            self.queries.append({
+                'query': sql,
+                'total_time': int(interval.total_seconds() * SEC_TO_USEC),
+            })
 
     def start_time_counter(self, counter_name):
         if self.time_counters:
