@@ -16,8 +16,13 @@ class TamarackMiddleware:
         start_worker(url, settings.TAMARACK_APP_ID)
 
     def process_request(self, request):
-        view = resolve(request.path)[0]
-        view_name = view.__module__ + '.' + view.__name__
+        match = resolve(request.path)
+
+        if match.url_name:
+            view_name = match.url_name
+        else:
+            view = match.func
+            view_name = view.__module__ + '.' + view.__name__
 
         current_request.mark_request_start(view_name)
 
