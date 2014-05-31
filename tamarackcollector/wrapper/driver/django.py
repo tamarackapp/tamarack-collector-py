@@ -40,6 +40,7 @@ class TimedView:
         finally:
             current_request.stop_time_counter('controller')
 
+
 def wrap_view_factory_function(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
@@ -47,7 +48,22 @@ def wrap_view_factory_function(f):
 
     return wrapped
 
+
+def wrap_template_render_function(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        current_request.start_time_counter('template-render')
+        try:
+            return f(*args, **kwargs)
+        finally:
+            current_request.stop_time_counter('template-render')
+
+    return wrapped
+
+
 def wrap():
     from django.core.handlers.base import BaseHandler
+    from django.template import loader
 
     BaseHandler.make_view_atomic = wrap_view_factory_function(BaseHandler.make_view_atomic)
+    loader.render_to_string = wrap_template_render_function(loader.render_to_string)
