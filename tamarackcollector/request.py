@@ -1,6 +1,6 @@
 import threading
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime
 
 from . import worker
@@ -10,28 +10,56 @@ SEC_TO_USEC = 1000 * 1000
 
 
 class TimeCounter:
-    __slots__ = ('start_time', 'total_usec', 'nesting')
+    __slots__ = ('start_time', 'total_usec')
 
     def __init__(self):
         self.start_time = None
         self.total_usec = 0
-        self.nesting = 0
 
     def start(self):
-        if self.nesting == 0:
-            self.start_time = datetime.utcnow()
-
-        self.nesting += 1
+        self.start_time = datetime.utcnow()
 
     def stop(self):
         end_time = datetime.utcnow()
-        self.nesting -= 1
 
-        if self.nesting == 0:
-            interval = end_time - self.start_time
-            interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
+        interval = end_time - self.start_time
+        interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
 
-            self.total_usec += interval_usec
+        self.total_usec += interval_usec
+        self.start_time = None
+
+class KeyedTimeCounter:
+    def __init__(self):
+        self.counter_stack = deque()
+        self.counters = defaultdict(TimeCounter)
+
+    def start(self, key):
+        if self.counter_stack:
+            self.counter_stack[-1].stop()
+
+        counter = self.counters[key]
+        counter.start()
+
+        self.counter_stack.append(counter)
+
+    def stop(self, key):
+        counter = self.counter_stack.pop()
+        counter.stop()
+
+        assert counter == self.counters[key]
+
+        if self.counter_stack:
+            self.counter_stack[-1].start()
+
+    def increment(self, key, value):
+        self.counters[key].total_usec += int(value * SEC_TO_USEC)
+
+    def as_dict(self):
+        return dict((k, v.total_usec) for k, v in self.counters.items())
+
+    def all_stopped(self):
+        return (not self.counter_stack and
+                all(not t.start_time for t in self.counters.values()))
 
 
 class RequestData(threading.local):
@@ -48,15 +76,16 @@ class RequestData(threading.local):
         self.in_request = True
         self.view_name = view_name
         self.request_start = datetime.utcnow()
-        self.time_counters = defaultdict(TimeCounter)
+        self.time_counters = KeyedTimeCounter()
 
     def mark_request_end(self, exception):
-        assert self.in_request
-
         interval = datetime.utcnow() - self.request_start
         interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
 
-        sensor_data = dict((k, v.total_usec) for k, v in self.time_counters.items())
+        assert self.in_request
+        assert self.time_counters.all_stopped()
+
+        sensor_data = self.time_counters.as_dict()
         other_time = interval_usec
 
         for val in sensor_data.values():
@@ -80,17 +109,14 @@ class RequestData(threading.local):
             'query': sql,
             'total_time': int(interval.total_seconds() * SEC_TO_USEC),
         })
-        self.increment_time_counter('sql', interval.total_seconds())
 
     def start_time_counter(self, counter_name):
-        self.time_counters[counter_name].start()
+        if self.time_counters:
+            self.time_counters.start(counter_name)
 
     def stop_time_counter(self, counter_name):
-        self.time_counters[counter_name].stop()
-
-    def increment_time_counter(self, counter, value):
-        if self.time_counters is not None:
-            self.time_counters[counter].total_usec += int(value * SEC_TO_USEC)
+        if self.time_counters:
+            self.time_counters.stop(counter_name)
 
 
 current_request = RequestData()

@@ -24,17 +24,17 @@ class WrappingCursor(object):
         if self._in_query:
             return op(self._cursor)
 
-        self._in_query = True
         start_time = datetime.utcnow()
+        current_request.start_time_counter('sql')
         try:
             return op(self._cursor)
         finally:
             end_time = datetime.utcnow()
+            current_request.stop_time_counter('sql')
 
             duration = end_time - start_time
 
             current_request.log_sql(sql, duration)
-            self._in_query = False
 
     def __getattribute__(self, name):
         try:
