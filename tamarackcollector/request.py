@@ -1,6 +1,6 @@
 import threading
 
-from collections import Counter
+from collections import defaultdict
 from datetime import datetime
 
 from . import worker
@@ -9,9 +9,29 @@ from . import worker
 SEC_TO_USEC = 1000 * 1000
 
 
-def request_duration(request):
-    interval = request._tamarack_end - request._tamarack_start
-    return int(interval.total_seconds() * SEC_TO_USEC)
+class TimeCounter:
+    __slots__ = ('start_time', 'total_usec', 'nesting')
+
+    def __init__(self):
+        self.start_time = None
+        self.total_usec = 0
+        self.nesting = 0
+
+    def start(self):
+        if self.nesting == 0:
+            self.start_time = datetime.utcnow()
+
+        self.nesting += 1
+
+    def stop(self):
+        end_time = datetime.utcnow()
+        self.nesting -= 1
+
+        if self.nesting == 0:
+            interval = end_time - self.start_time
+            interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
+
+            self.total_usec += interval_usec
 
 
 class RequestData(threading.local):
@@ -28,7 +48,7 @@ class RequestData(threading.local):
         self.in_request = True
         self.view_name = view_name
         self.request_start = datetime.utcnow()
-        self.time_counters = Counter()
+        self.time_counters = defaultdict(TimeCounter)
 
     def mark_request_end(self, exception):
         assert self.in_request
@@ -36,7 +56,7 @@ class RequestData(threading.local):
         interval = datetime.utcnow() - self.request_start
         interval_usec = int(interval.total_seconds() * SEC_TO_USEC)
 
-        sensor_data = dict(self.time_counters)
+        sensor_data = dict((k, v.total_usec) for k, v in self.time_counters.items())
         other_time = interval_usec
 
         for val in sensor_data.values():
@@ -62,9 +82,15 @@ class RequestData(threading.local):
         })
         self.increment_time_counter('sql', interval.total_seconds())
 
+    def start_time_counter(self, counter_name):
+        self.time_counters[counter_name].start()
+
+    def stop_time_counter(self, counter_name):
+        self.time_counters[counter_name].stop()
+
     def increment_time_counter(self, counter, value):
         if self.time_counters is not None:
-            self.time_counters[counter] += int(value * SEC_TO_USEC)
+            self.time_counters[counter].total_usec += int(value * SEC_TO_USEC)
 
 
 current_request = RequestData()

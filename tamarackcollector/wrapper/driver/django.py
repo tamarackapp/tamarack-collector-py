@@ -34,12 +34,11 @@ class TimedView:
         self.view = view
 
     def __call__(self, *args, **kwargs):
-        start = datetime.utcnow()
+        current_request.start_time_counter('controller')
         try:
             return self.view(*args, **kwargs)
         finally:
-            duration = (datetime.utcnow() - start).total_seconds()
-            current_request.increment_time_counter('controller', duration)
+            current_request.stop_time_counter('controller')
 
 def wrap_view_factory_function(f):
     @wraps(f)
