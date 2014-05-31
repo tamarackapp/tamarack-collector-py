@@ -69,6 +69,9 @@ def wrap_template_render_function(f):
 def wrap():
     from django.core.handlers.base import BaseHandler
     from django.template import loader
+    from django.template.response import SimpleTemplateResponse
 
     BaseHandler.make_view_atomic = wrap_view_factory_function(BaseHandler.make_view_atomic)
     loader.render_to_string = wrap_template_render_function(loader.render_to_string)
+    SimpleTemplateResponse.render = wrap_template_render_function(
+        SimpleTemplateResponse.render)
