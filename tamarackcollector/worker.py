@@ -55,7 +55,7 @@ def process_jobs(url, app_id, queue):
             }
 
             resp = requests.post(url, data=json.dumps(data),
-                                 {'Content-Type': 'application/json'})
+                                 headers={'Content-Type': 'application/json'})
 
             if resp.status_code == 200:
                 by_minute = {}
